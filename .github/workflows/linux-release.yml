@@ -1,0 +1,86 @@
+name: Build Bss Booster Linux App
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'bss_booster/**'
+      - 'tests/**'
+      - 'assets/**'
+      - 'main.py'
+      - 'requirements-linux.txt'
+      - 'build_linux.sh'
+      - 'run_linux.sh'
+      - 'install_linux_binary.sh'
+      - '.github/workflows/linux-release.yml'
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Install Python on build machine (not user's Linux PC)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install build and X11 tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xdotool libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xfixes0 \
+            libxcb-shape0 libegl1 libopengl0
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-linux.txt 'pyinstaller>=6,<7' pytest
+      - name: Run all tests including the GUI smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests
+      - name: Build Linux executable
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name BssBooster \
+            --add-data 'assets/bss_booster_icon.png:assets' \
+            --add-data 'assets/booster_alarm.wav:assets' \
+            main.py
+          chmod +x dist/BssBooster
+      - name: Test app can start on virtual X11 desktop
+        run: |
+          set -e
+          xvfb-run -a sh -c 'QT_QPA_PLATFORM=xcb timeout 8s ./dist/BssBooster > /tmp/bss-linux-smoke.log 2>&1' || status=$?
+          cat /tmp/bss-linux-smoke.log || true
+          if [ "${status:-0}" -ne 0 ] && [ "${status:-0}" -ne 124 ]; then
+            echo 'Linux binary failed its startup check'
+            exit 1
+          fi
+      - name: Package Linux app
+        run: |
+          mkdir -p linux_release
+          cp dist/BssBooster linux_release/BssBooster
+          cp assets/bss_booster_icon.png linux_release/bss_booster_icon.png
+          cat > linux_release/README-LINUX.txt <<'EOF'
+          BSS BOOSTER FOR LINUX (x86_64)
+
+          Extract this archive and run: ./BssBooster
+          If needed, make it executable first: chmod +x BssBooster
+          Python is NOT needed to run this binary.
+
+          On Ubuntu/Debian, install Linux runtime helpers:
+            sudo apt install xdotool espeak-ng pulseaudio-utils
+
+          Log into an X11/Xorg desktop session for macro keypresses and
+          global shortcuts. On Wayland those functions are disabled.
+          Always-on-top overlays require a compositing window manager.
+          Set the Target Window title in Settings to match your game window;
+          Roblox under Linux may have a different title (for example Sober).
+
+          This is an unsigned community utility. Inspect its source and
+          verify the GitHub Actions origin before executing.
+          EOF
+          tar -czf BssBooster-Linux-x86_64.tar.gz -C linux_release .
+      - name: Upload downloadable Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: BssBooster-Linux-x86_64
+          path: BssBooster-Linux-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
