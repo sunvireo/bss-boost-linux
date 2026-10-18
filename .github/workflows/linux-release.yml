@@ -10,6 +10,8 @@ on:
       - 'requirements-linux.txt'
       - 'build_linux.sh'
       - 'run_linux.sh'
+      - 'WAYLAND_QUICK_START.txt'
+      - 'START_LINUX_HERE.md'
       - 'install_linux_binary.sh'
       - '.github/workflows/linux-release.yml'
 jobs:
@@ -57,6 +59,8 @@ jobs:
           mkdir -p linux_release
           cp dist/BssBooster linux_release/BssBooster
           cp assets/bss_booster_icon.png linux_release/bss_booster_icon.png
+          cp START_LINUX_HERE.md linux_release/START_LINUX_HERE.md
+          cp WAYLAND_QUICK_START.txt linux_release/WAYLAND_QUICK_START.txt
           cat > linux_release/README-LINUX.txt <<'EOF'
           BSS BOOSTER FOR LINUX (x86_64)
 
@@ -64,14 +68,26 @@ jobs:
           If needed, make it executable first: chmod +x BssBooster
           Python is NOT needed to run this binary.
 
-          On Ubuntu/Debian, install Linux runtime helpers:
-            sudo apt install xdotool espeak-ng pulseaudio-utils
+          Linux macro helpers (Ubuntu/Debian):
+            X11: sudo apt install xdotool espeak-ng pulseaudio-utils
+            Wayland: sudo apt install ydotool espeak-ng pulseaudio-utils
 
-          Log into an X11/Xorg desktop session for macro keypresses and
-          global shortcuts. On Wayland those functions are disabled.
-          Always-on-top overlays require a compositing window manager.
-          Set the Target Window title in Settings to match your game window;
-          Roblox under Linux may have a different title (for example Sober).
+          WAYLAND IMPORTANT:
+            Configure the system ydotoold daemon/service so ydotool can
+            connect to its /dev/uinput-backed virtual keyboard. Do not
+            change uinput permissions insecurely or run Bss Booster as root.
+            Wayland has no universal foreground-title check: macro input
+            remains blocked until the user explicitly disables focus-only
+            protection in Settings. Then keys go to whatever has focus.
+            Global hotkeys require manually assigned desktop shortcuts, e.g.
+            /path/to/BssBooster --control start
+            /path/to/BssBooster --control pause
+            /path/to/BssBooster --control stop
+            /path/to/BssBooster --control alarm:Glitter
+            Qt will default to XWayland (xcb) when DISPLAY is available;
+            overlay placement/always-on-top isn't universal on Wayland.
+
+          Full illustrated setup instructions: START_LINUX_HERE.md
 
           This is an unsigned community utility. Inspect its source and
           verify the GitHub Actions origin before executing.

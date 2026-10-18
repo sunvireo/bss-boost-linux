@@ -14,4 +14,4 @@ fi
   main.py
 chmod +x dist/BssBooster
 printf '\nBuilt: %s/dist/BssBooster\n' "$PWD"
-printf 'Use ./dist/BssBooster to run. X11 + xdotool needed for macro keys.\n'
+printf 'Run ./dist/BssBooster. X11: xdotool; Wayland: ydotool + configured ydotoold.\n'

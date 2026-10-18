@@ -29,7 +29,7 @@ class LinuxHotkeys(QObject):
     def register(self, alarms: list[dict]):
         self.unregister()
         if not x11_available():
-            self.failures.append("Linux global shortcuts require X11 and xdotool (Wayland unsupported)")
+            self.failures.append("The built-in global listener requires X11. On Wayland, configure custom desktop shortcuts to BssBooster --control commands.")
             return
         try:
             from pynput import keyboard

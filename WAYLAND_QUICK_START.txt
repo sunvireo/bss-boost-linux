@@ -1,0 +1,42 @@
+BSS BOOSTER - WAYLAND QUICK START (LINUX)
+
+1. Download the Linux build from the GitHub Actions artifact, extract it,
+   and run ./BssBooster (chmod +x BssBooster if needed).
+   Python is NOT required for the compiled Linux app.
+
+2. Install the keyboard automation tool (Ubuntu/Debian):
+      sudo apt install ydotool espeak-ng pulseaudio-utils
+
+3. Configure/start ydotoold following your Linux distribution's
+   instructions. It needs /dev/uinput access; never change the device
+   permissions insecurely or run Bss Booster itself as root.
+
+4. In Bss Booster -> Settings, turn OFF "Only send keys while Roblox is
+   the active window" if you understand the Wayland limitation.
+   Wayland cannot provide a universal active game title check.
+   The macro will type into whichever window is focused: be careful!
+
+5. In Hotbar, select an item, enable its slot, set its key/cooldown,
+   then click Start with the game focused. Click Stop before leaving.
+
+6. GLOBAL HOTKEYS ON WAYLAND (OPTIONAL)
+   In your desktop System Settings -> Keyboard -> Custom Shortcuts,
+   map F1/F2/F3 (if available) to commands such as:
+      /FULL/PATH/BssBooster --control start
+      /FULL/PATH/BssBooster --control pause
+      /FULL/PATH/BssBooster --control stop
+   For an alarm named Glitter:
+      /FULL/PATH/BssBooster --control alarm:Glitter
+   The app has to be open. The desktop controls shortcut assignment.
+
+7. DISPLAY OVERLAYS
+   When XWayland is present Bss Booster uses Qt/XCB by default to make
+   floating overlays easier to place. Some Wayland compositors and native
+   fullscreen games still will not show the overlays on top. Use a
+   windowed/borderless game if possible; alarms continue off-screen.
+   If Qt/XCB is unavailable, try:
+      QT_QPA_PLATFORM=wayland ./BssBooster
+   On native Wayland overlay movement may be restricted.
+
+The macro may not work with every game, Linux distribution, or compositor.
+For the detailed guide read START_LINUX_HERE.md.

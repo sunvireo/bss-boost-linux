@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QSize
+from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QSize, QObject, Signal
 from PySide6.QtGui import QFont, QIcon, QKeySequence, QShortcut, QPixmap, QPainter, QPainterPath, QPen, QColor
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFrame,
@@ -18,17 +18,22 @@ from PySide6.QtWidgets import (
 
 from .config import ITEMS, Store, human_time, make_alarm, validated_profile
 from .engine import AlarmClock, Scheduler
-from .linux_backend import keyboard_backend, x11_available
+from .linux_backend import keyboard_backend, x11_available, wayland_session, wayland_available, linux_backend_ready, linux_backend_label
 if os.name == "nt":
     from .hotkeys import WindowsHotkeys as PlatformHotkeys
     from .notifier import AlarmNotifier
 else:
     from .linux_hotkeys import LinuxHotkeys as PlatformHotkeys
     from .linux_notifier import AlarmNotifier
+    from .linux_control import ControlServer
 from .hotkey_codec import normalize_hotkey
 from .overlay import HotbarOverlay, AlarmOverlay
 from .overlay_geometry import bottom_edge_y, clamp_overlay_position
 from .theme import stylesheet
+
+class _LinuxControlSignals(QObject):
+    command = Signal(str)
+
 
 PAGES = ["Hotbar", "Timers", "Alarms", "Profiles", "Status", "Settings"]
 SYMBOLS = {"Hotbar": "◈", "Timers": "◷", "Profiles": "▤", "Status": "⌁", "Settings": "⚙"}
@@ -169,6 +174,13 @@ class BoosterWindow(QMainWindow):
         if os.name == "nt":
             QApplication.instance().installNativeEventFilter(self.hotkeys)
         QTimer.singleShot(0, self._sync_hotkeys)
+        self._linux_control = None
+        if os.name != 'nt':
+            self._linux_signals = _LinuxControlSignals()
+            self._linux_signals.command.connect(self._run_linux_control)
+            self._linux_control = ControlServer(self._linux_signals.command.emit)
+            if not self._linux_control.start():
+                self._log('Linux shortcut control socket unavailable (already running or permissions).')
         # Application shortcuts work while the window is focused, including on non-Windows.
         for key, action in (("F1", self.start_macro), ("F2", self.pause_macro), ("F3", self.stop_macro)):
             shortcut = QShortcut(QKeySequence(key), self)
@@ -176,9 +188,13 @@ class BoosterWindow(QMainWindow):
             shortcut.activated.connect(action)
         self.show_page("Hotbar")
         self._log("Ready. Set up an item, click its red AUTO button or enable it here, then press F1.")
-        if os.name != "nt" and not x11_available():
-            self._log("Linux: key sending requires X11/Xorg, an active DISPLAY, and xdotool. "
-                      "On Wayland, hotbar macros and global shortcuts are disabled; alarms and settings still work.")
+        if os.name != 'nt':
+            self._log('Linux input backend: ' + linux_backend_label())
+            if wayland_session():
+                self._log('Wayland: install ydotool + start ydotoold. The active-window ' 
+                          'focus guard cannot work on Wayland; explicitly disable it in Settings '
+                          'only when you are ready to send keys to the currently focused app.')
+                self._log('Wayland global keys: assign desktop shortcuts to BssBooster --control start/pause/stop.')
 
     def _build_shell(self):
         root = QWidget()
@@ -586,6 +602,12 @@ class BoosterWindow(QMainWindow):
 
     def _page_alarms(self):
         scroll, v = self._page("Alarms & overlay", "Set reset hotkeys, sound or voice alerts, and a separately movable alarm display.")
+        if os.name != 'nt' and wayland_session():
+            note = label('Wayland: reset shortcuts set here are not captured globally by the app. '
+                         'Bind a custom desktop shortcut to BssBooster --control alarm:Glitter '
+                         '(replace Glitter with your alarm name). Alarms and sound still run normally.', 'Muted')
+            note.setWordWrap(True)
+            v.addWidget(note)
         toolbar, tools = panel()
         top = row(label("Your alarms", "SectionTitle"))
         top.addStretch(1)
@@ -929,15 +951,29 @@ class BoosterWindow(QMainWindow):
         layout.addWidget(checkbox("Only send keys while Roblox is the active window (recommended)",
                                    self.store.settings["focus_only"],
                                    lambda value: self._set_setting("focus_only", value)))
+        if os.name != 'nt' and wayland_session():
+            warning = label('WAYLAND: The active-window title cannot be checked. With focus protection ON, '
+                            'macros will not send keys. Turn it OFF only if you accept that keys go to '
+                            'whichever app has focus. Pause before switching windows.', 'Muted')
+            warning.setWordWrap(True)
+            layout.addWidget(warning)
+            layout.addWidget(label('Input: ydotool + ydotoold must be installed and running. '
+                                   'Global keys: bind BssBooster --control start / pause / stop '
+                                   'in your desktop keyboard shortcut settings.', 'Muted'))
         layout.addWidget(label("Active window must contain this text:", "Muted"))
         field = QLineEdit(self.store.settings["target_title"])
         field.setPlaceholderText("Roblox")
         field.setMaximumWidth(350)
         field.textEdited.connect(lambda val: self._set_setting("target_title", val))
         layout.addWidget(field)
-        layout.addWidget(checkbox("Enable global macro + alarm shortcuts (X11 on Linux)" if os.name != "nt" else "Enable global macro + alarm shortcuts (Windows)", self.store.settings["hotkeys"],
-                                   lambda val: self._set_setting("hotkeys", val)))
-        layout.addWidget(label("Alarm reset keys work globally while Bss Booster is open. Duplicate or system-reserved shortcuts may fail.", "Muted"))
+        if os.name != 'nt' and wayland_session():
+            layout.addWidget(label('Wayland global keys: create custom keyboard shortcuts in your Linux '
+                                   'desktop settings that run BssBooster --control start / pause / stop '
+                                   'or BssBooster --control alarm:Glitter.', 'Muted'))
+        else:
+            layout.addWidget(checkbox("Enable global macro + alarm shortcuts (X11 on Linux)" if os.name != 'nt' else "Enable global macro + alarm shortcuts (Windows)", self.store.settings["hotkeys"],
+                                       lambda val: self._set_setting("hotkeys", val)))
+            layout.addWidget(label("Alarm reset keys work globally while Bss Booster is open. Duplicate or system-reserved shortcuts may fail.", "Muted"))
         layout.addWidget(checkbox("Start enabled alarms when the macro starts", self.store.settings["start_alarms_with_macro"],
                                    lambda val: self._set_setting("start_alarms_with_macro", val)))
         v.addWidget(p)
@@ -1009,10 +1045,20 @@ class BoosterWindow(QMainWindow):
         if not hasattr(self, "hotkeys"):
             return
         self.hotkeys.unregister()
-        if self.store.settings["hotkeys"]:
+        if self.store.settings["hotkeys"] and not (os.name != 'nt' and wayland_session()):
             self.hotkeys.register(self.store.profile["alarms"])
             if self.hotkeys.failures:
                 self._log("Unavailable global shortcuts: " + ", ".join(self.hotkeys.failures))
+
+    def _run_linux_control(self, command: str):
+        if command in ('start', 'pause', 'stop'):
+            self._action_by_name(command)
+        elif command.startswith('alarm:'):
+            name = command[6:].casefold()
+            alarm = next((a for a in self.store.profile['alarms']
+                          if a['name'].casefold() == name and a['enabled']), None)
+            if alarm:
+                self._restart_by_alarm_id(alarm['id'])
 
     def _action_by_name(self, action):
         {"start": self.start_macro, "pause": self.pause_macro, "stop": self.stop_macro}[action]()
@@ -1023,6 +1069,19 @@ class BoosterWindow(QMainWindow):
                 self.scheduler.resume()
                 self._log("Boosting macro resumed")
             return
+        if os.name != 'nt' and wayland_session():
+            if not wayland_available():
+                QMessageBox.information(self, 'Wayland keyboard helper needed',
+                    'To send keys on Wayland, install ydotool and configure its ydotoold service. '
+                    'See START_LINUX_HERE.md. The macro will remain stopped.')
+                return
+            if self.store.settings['focus_only']:
+                QMessageBox.information(self, 'Wayland focus protection',
+                    'Wayland does not allow this app to confirm which window is focused. '
+                    'For that reason, keypresses are blocked by default. To use the macro, '
+                    'go to Settings and explicitly turn OFF the Roblox focus guard. '
+                    'Then keep Roblox focused and stop the macro before switching windows.')
+                return
         active = [s for s in self.store.profile["slots"] if s["enabled"] and s["item"].strip().lower() != "empty"]
         if not active:
             self._log("No slots enabled. Enable a hotbar slot to start.")
@@ -1048,7 +1107,7 @@ class BoosterWindow(QMainWindow):
 
     def _tick(self):
         kb = keyboard_backend()
-        backend_ready = True if os.name == "nt" else x11_available()
+        backend_ready = True if os.name == "nt" else linux_backend_ready()
         focused = (not self.store.settings["focus_only"] or
                    kb.focused(self.store.settings["target_title"]))
         for key in self.scheduler.due(can_send=focused and backend_ready):
@@ -1084,7 +1143,9 @@ class BoosterWindow(QMainWindow):
         elif self.scheduler.paused:
             status = "Paused"
         elif focused is False and self.store.settings["focus_only"]:
-            status = "Waiting for Roblox"
+            status = 'Focus guard unavailable (Wayland)' if os.name != 'nt' and wayland_session() else "Waiting for Roblox"
+        elif os.name != 'nt' and not linux_backend_ready():
+            status = 'Input backend unavailable'
         else:
             status = "Running"
         self.status_label.setText(status)
@@ -1109,6 +1170,8 @@ class BoosterWindow(QMainWindow):
         self.scheduler.stop()
         self.notifier.close()
         self.hotkeys.unregister()
+        if self._linux_control is not None:
+            self._linux_control.close()
         if os.name == "nt":
             QApplication.instance().removeNativeEventFilter(self.hotkeys)
         self.overlay.close()

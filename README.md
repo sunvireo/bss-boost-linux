@@ -1,6 +1,6 @@
-# Linux release available
+# Windows and Linux release (X11 + Wayland setup)
 
-Bss Booster now supports Linux **X11/Xorg**. See [START_LINUX_HERE.md](START_LINUX_HERE.md) for the Python-free GitHub Actions build, Linux launch/build scripts, X11 requirements, and offline alarm speech/sound dependencies. The original Windows build remains available. Linux native Wayland does not support its global hotkeys or key-injection macro backend.
+Bss Booster supports Linux **X11/Xorg** (`xdotool`) and **Wayland** (`ydotool` with a configured `ydotoold` service). On Wayland, user-configured desktop shortcuts can control the running app; the app cannot automatically inspect the active window. Overlays may be limited by the compositor. See [START_LINUX_HERE.md](START_LINUX_HERE.md) for complete setup and the no-Python GitHub Actions build. Windows support remains available.
 
 ---
 
@@ -76,3 +76,7 @@ A customizable Bee Swarm Simulator boosting helper with a **light, Revolution-Ma
 - The Alarms tab now has a clear **bell icon**.
 - **+ New alarm** remains available directly on the Alarms page.
 - Hotbar macros, timers, movable overlays, and saved settings are unchanged.
+
+## v1.6 Linux Wayland compatibility
+
+On Wayland, Bss Booster now supports simulated hotbar keypresses via **ydotool** (with a separately configured **ydotoold** daemon). Window-title detection remains unavailable, so the focus guard blocks key input by default until explicitly disabled. Compositor-managed keyboard shortcuts can trigger the running app via `BssBooster --control start`, `pause`, `stop`, or `alarm:NAME`. The Qt UI tries XWayland for better placement of overlays where possible, but no universal always-on-top guarantee exists. See [`START_LINUX_HERE.md`](START_LINUX_HERE.md). The GUI/audio also run with the macro input backend unavailable.
